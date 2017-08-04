@@ -1,0 +1,17 @@
+[package]
+name = "send-cell"
+version = "0.1.0"
+authors = ["Sebastian Dröge <sebastian@centricular.com>"]
+description = "Immutable memory region with runtime Send checking"
+repository = "https://github.com/sdroege/send-cell"
+license = "MIT"
+categories = ["concurrency"]
+readme = "README.md"
+include = [
+    "src/lib.rs",
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+]
+
+[dependencies]

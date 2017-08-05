@@ -63,7 +63,10 @@ impl<T> SendCell<T> {
     ///
     /// Panics if called from a different thread than the one where the original value was created.
     pub fn get(&self) -> &T {
-        assert_eq!(thread::current().id(), self.thread_id);
+        if thread::current().id() != self.thread_id {
+            panic!("trying to convert to inner value in invalid thread");
+        }
+
         &self.value
     }
 

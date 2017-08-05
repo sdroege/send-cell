@@ -3,6 +3,7 @@
 // Licensed under the MIT license, see the LICENSE file or <http://opensource.org/licenses/MIT>
 
 use std::thread;
+use std::fmt;
 use std::cmp;
 use std::ops;
 use std::hash::{Hash, Hasher};
@@ -12,7 +13,9 @@ use std::hash::{Hash, Hasher};
 /// Enforcing safety with regard to the `Send` trait happens at runtime instead of compile time.
 /// Accessing the contained value will call `panic!` if happening from any thread but the thread on
 /// which the value was created on. The `SendCell` can be safely transferred to other threads.
-#[derive(Clone, Debug)]
+///
+/// Any other usage from a different thread will lead to a panic, i.e. using any of the traits
+/// implemented on `SendCell` like `Eq`.
 pub struct SendCell<T> {
     value: T,
     thread_id: thread::ThreadId,
@@ -114,27 +117,39 @@ impl<T: Default> Default for SendCell<T> {
     }
 }
 
+impl<T: Clone> Clone for SendCell<T> {
+    fn clone(&self) -> SendCell<T> {
+        SendCell::new(self.get().clone())
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for SendCell<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.get().fmt(f)
+    }
+}
+
 impl<T: PartialEq> PartialEq<SendCell<T>> for SendCell<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.value.eq(&other.value)
+        self.get().eq(other.get())
     }
 }
 impl<T: Eq> Eq for SendCell<T> {}
 
 impl<T: PartialOrd> PartialOrd<SendCell<T>> for SendCell<T> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.value.partial_cmp(&other.value)
+        self.get().partial_cmp(other.get())
     }
 }
 impl<T: Ord> Ord for SendCell<T> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.value.cmp(&other.value)
+        self.get().cmp(other.get())
     }
 }
 
 impl<T: Hash> Hash for SendCell<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state)
+        self.get().hash(state)
     }
 }
 

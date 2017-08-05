@@ -302,4 +302,13 @@ mod tests {
         // Forget so drop() is not run, which would panic
         mem::forget(res);
     }
+
+    #[test]
+    #[should_panic]
+    fn drop_panic() {
+        let t = thread::spawn(move || SendCell::new(1));
+
+        let r = t.join();
+        let _ = r.unwrap();
+    }
 }

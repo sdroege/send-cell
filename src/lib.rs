@@ -14,10 +14,15 @@ use std::hash::{Hash, Hasher};
 /// Accessing the contained value will call `panic!` if happening from any thread but the thread on
 /// which the value was created on. The `SendCell` can be safely transferred to other threads.
 ///
+/// # Warning
+///
 /// Any other usage from a different thread will lead to a panic, i.e. using any of the traits
 /// implemented on `SendCell` like `Eq`.
+///
+/// Calling `drop` on a `SendCell` or otherwise freeing the value from a different thread than the
+/// one where it was created also results in a panic.
 pub struct SendCell<T> {
-    value: T,
+    value: Option<T>,
     thread_id: thread::ThreadId,
 }
 
@@ -25,7 +30,7 @@ impl<T> SendCell<T> {
     /// Creates a new `SendCell` containing `value`.
     pub fn new(value: T) -> Self {
         SendCell {
-            value: value,
+            value: Some(value),
             thread_id: thread::current().id(),
         }
     }
@@ -35,21 +40,21 @@ impl<T> SendCell<T> {
     /// # Panics
     ///
     /// Panics if called from a different thread than the one where the original value was created.
-    pub fn into_inner(self) -> T {
+    pub fn into_inner(mut self) -> T {
         if thread::current().id() != self.thread_id {
             panic!("trying to convert to inner value in invalid thread");
         }
 
-        self.value
+        self.value.take().unwrap()
     }
 
     /// Consumes the `SendCell`, returning the wrapped value if successful.
     ///
     /// The wrapped value is returned if this is called from the same thread as the one where the
     /// original value was created, otherwise the `SendCell` is returned as `Err(self)`.
-    pub fn try_into_inner(self) -> Result<T, Self> {
+    pub fn try_into_inner(mut self) -> Result<T, Self> {
         if thread::current().id() == self.thread_id {
-            Ok(self.value)
+            Ok(self.value.take().unwrap())
         } else {
             Err(self)
         }
@@ -67,7 +72,7 @@ impl<T> SendCell<T> {
             panic!("trying to convert to inner value in invalid thread");
         }
 
-        &self.value
+        self.value.as_ref().unwrap()
     }
 
     /// Tries to immutably borrow the wrapped value.
@@ -78,7 +83,7 @@ impl<T> SendCell<T> {
     /// Multiple immutable borrows can be taken out at the same time.
     pub fn try_get(&self) -> Option<&T> {
         if thread::current().id() == self.thread_id {
-            Some(&self.value)
+            Some(self.value.as_ref().unwrap())
         } else {
             None
         }
@@ -123,6 +128,14 @@ impl<T: Default> Default for SendCell<T> {
 impl<T: Clone> Clone for SendCell<T> {
     fn clone(&self) -> SendCell<T> {
         SendCell::new(self.get().clone())
+    }
+}
+
+impl<T> Drop for SendCell<T> {
+    fn drop(&mut self) {
+        if thread::current().id() != self.thread_id {
+            panic!("trying to convert to inner value in invalid thread");
+        }
     }
 }
 

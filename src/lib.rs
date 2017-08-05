@@ -190,6 +190,7 @@ mod tests {
     use super::*;
     use std::mem;
     use std::thread;
+    use std::panic;
 
     #[test]
     fn get_success() {
@@ -198,22 +199,34 @@ mod tests {
         assert_eq!(cell.try_get(), Some(&1));
     }
 
-    // FIXME: How to test this? This will panic, and
-    // then during panicking the destructor will panic!
-    //#[test]
-    //#[should_panic]
-    //fn get_failure() {
-    //    let t = thread::spawn(move || {
-    //        let cell = SendCell::new(1);
-    //        assert_eq!(cell.get(), &1);
-    //        cell
-    //    });
-    //
-    //    let r = t.join();
-    //    let cell = r.unwrap();
-    //
-    //    let _ = cell.get();
-    //}
+    #[test]
+    #[should_panic]
+    fn get_failure() {
+        let t = thread::spawn(move || {
+            let cell = SendCell::new(1);
+            assert_eq!(cell.get(), &1);
+            cell
+        });
+
+        let r = t.join();
+        let cell = r.unwrap();
+
+        // Some dance here to
+        // a) Not panic uncontrolled: this would run the Drop impl
+        //    of SendCell from the wrong thread, which panics again
+        // b) Make the borrow checker happy so that we can forget
+        //    the cell in case of panic (and don't have it borrowed anymore)
+        // c) And then rethrow the panic
+        let panic = {
+            let res = panic::catch_unwind(|| cell.get());
+
+            res.err()
+        };
+        mem::forget(cell);
+        if let Some(payload) = panic {
+            panic::resume_unwind(payload);
+        }
+    }
 
     #[test]
     fn try_get_failure() {
@@ -238,22 +251,34 @@ mod tests {
         assert_eq!(*cell.try_borrow().unwrap(), 1);
     }
 
-    // FIXME: How to test this? This will panic, and
-    // then during panicking the destructor will panic!
-    //#[test]
-    //#[should_panic]
-    //fn borrow_failure() {
-    //    let t = thread::spawn(move || {
-    //        let cell = SendCell::new(1);
-    //        assert_eq!(*cell.borrow(), 1);
-    //        cell
-    //    });
-    //
-    //    let r = t.join();
-    //    let cell = r.unwrap();
-    //
-    //    let _ = cell.borrow();
-    //}
+    #[test]
+    #[should_panic]
+    fn borrow_failure() {
+        let t = thread::spawn(move || {
+            let cell = SendCell::new(1);
+            assert_eq!(*cell.borrow(), 1);
+            cell
+        });
+
+        let r = t.join();
+        let cell = r.unwrap();
+
+        // Some dance here to
+        // a) Not panic uncontrolled: this would run the Drop impl
+        //    of SendCell from the wrong thread, which panics again
+        // b) Make the borrow checker happy so that we can forget
+        //    the cell in case of panic (and don't have it borrowed anymore)
+        // c) And then rethrow the panic
+        let panic = {
+            let res = panic::catch_unwind(|| cell.borrow());
+
+            res.err()
+        };
+        mem::forget(cell);
+        if let Some(payload) = panic {
+            panic::resume_unwind(payload);
+        }
+    }
 
     #[test]
     fn try_borrow_failure() {
@@ -277,18 +302,9 @@ mod tests {
         assert_eq!(cell.try_into_inner().unwrap(), 1);
     }
 
-    // FIXME: How to test this? This will panic, and
-    // then during panicking the destructor will panic!
-    //#[test]
-    //#[should_panic]
-    //fn into_inner_failure() {
-    //    let t = thread::spawn(move || SendCell::new(1));
-    //
-    //    let r = t.join();
-    //    let cell = r.unwrap();
-    //
-    //    let _ = cell.into_inner();
-    //}
+    // FIXME: Can't test the failure case of to_inner() as it will
+    // panic and then during unwinding call the Drop impl of SendCell,
+    // which will panic again and can't be handled by the test
 
     #[test]
     fn try_into_inner_failure() {

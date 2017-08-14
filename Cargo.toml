@@ -15,3 +15,6 @@ include = [
 ]
 
 [dependencies]
+
+[badges]
+travis-ci = { repository = "sdroege/send-cell", branch = "master" }

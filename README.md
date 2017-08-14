@@ -1,4 +1,4 @@
-# send-cell
+# send-cell [![crates.io](https://img.shields.io/crates/v/send-cell.svg)](https://crates.io/crates/send-cell) [![Build Status](https://travis-ci.org/sdroege/send-cell.svg?branch=master)](https://travis-ci.org/sdroege/send-cell) [![docs.rs](https://docs.rs/send-cell/badge.svg)](https://docs.rs/send-cell)
 
 An immutable memory location that implements `Send` for types that do not
 implement it.

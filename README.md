@@ -10,8 +10,8 @@ from any thread but the thread on which the value was created on. The
 
 ## LICENSE
 
-gstreamer-sys and all crates contained here are licensed under the MIT
-license ([LICENSE](LICENSE) or http://opensource.org/licenses/MIT).
+send-cell is licensed under the MIT license ([LICENSE](LICENSE) or
+http://opensource.org/licenses/MIT).
 
 ## Contribution
 

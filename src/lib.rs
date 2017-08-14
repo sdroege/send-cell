@@ -2,6 +2,8 @@
 //
 // Licensed under the MIT license, see the LICENSE file or <http://opensource.org/licenses/MIT>
 
+//! An immutable memory location that implements `Send` for types that do not implement it
+
 use std::thread;
 use std::fmt;
 use std::cmp;

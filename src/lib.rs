@@ -4,10 +4,11 @@
 
 //! An immutable memory location that implements `Send` for types that do not implement it
 
-use std::thread;
-use std::fmt;
 use std::cmp;
+use std::fmt;
+use std::mem;
 use std::ops;
+use std::thread;
 use std::hash::{Hash, Hasher};
 
 /// An immutable memory location that implements `Send` for types that do not implement it
@@ -136,7 +137,10 @@ impl<T: Clone> Clone for SendCell<T> {
 impl<T> Drop for SendCell<T> {
     fn drop(&mut self) {
         if thread::current().id() != self.thread_id {
-            panic!("trying to convert to inner value in invalid thread");
+            // Explicitly leak the value. Destructors of inner fields are still run after panic.
+            let value = self.value.take();
+            mem::forget(value);
+            panic!("trying to run destructor in invalid thread");
         }
     }
 }
@@ -191,8 +195,8 @@ impl<'a, T: 'a> ops::Deref for Ref<'a, T> {
 mod tests {
     use super::*;
     use std::mem;
-    use std::thread;
     use std::panic;
+    use std::thread;
 
     #[test]
     fn get_success() {
@@ -328,5 +332,30 @@ mod tests {
 
         let r = t.join();
         let _ = r.unwrap();
+    }
+
+    #[test]
+    fn drop_is_not_run_from_other_thread() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct MakeItTrueOnDrop(Arc<AtomicBool>);
+
+        impl Drop for MakeItTrueOnDrop {
+            fn drop(&mut self) {
+                self.0.swap(true, Ordering::SeqCst);
+            }
+        }
+
+        let is_dropped = Arc::new(AtomicBool::new(false));
+        let v = SendCell::new(MakeItTrueOnDrop(is_dropped.clone()));
+        let t = thread::spawn(move || {
+            let _ = v;
+        });
+        let error = t.join().expect_err("thread should have panicked");
+        assert_eq!(error.downcast_ref::<&str>(), 
+                   Some(&"trying to run destructor in invalid thread"));
+        assert_eq!(is_dropped.load(Ordering::SeqCst), false,
+                   "Drop impl should not have been executed");
     }
 }

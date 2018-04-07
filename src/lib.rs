@@ -6,10 +6,10 @@
 
 use std::cmp;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops;
 use std::thread;
-use std::hash::{Hash, Hasher};
 
 /// An immutable memory location that implements `Send` for types that do not implement it
 ///
@@ -353,9 +353,14 @@ mod tests {
             let _ = v;
         });
         let error = t.join().expect_err("thread should have panicked");
-        assert_eq!(error.downcast_ref::<&str>(), 
-                   Some(&"trying to run destructor in invalid thread"));
-        assert_eq!(is_dropped.load(Ordering::SeqCst), false,
-                   "Drop impl should not have been executed");
+        assert_eq!(
+            error.downcast_ref::<&str>(),
+            Some(&"trying to run destructor in invalid thread")
+        );
+        assert_eq!(
+            is_dropped.load(Ordering::SeqCst),
+            false,
+            "Drop impl should not have been executed"
+        );
     }
 }

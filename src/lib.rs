@@ -50,7 +50,9 @@ impl<T> SendCell<T> {
     /// The wrapped value is returned if this is called from the same thread as the one where the
     /// original value was created, otherwise the `SendCell` is returned as `Err(self)`.
     pub fn try_into_inner(self) -> Result<T, Self> {
-        self.value.try_into_inner().map_err(|v| SendCell { value: v })
+        self.value
+            .try_into_inner()
+            .map_err(|v| SendCell { value: v })
     }
 
     /// Immutably borrows the wrapped value.
@@ -298,8 +300,7 @@ mod tests {
 
     struct Dummy(i32);
     impl Drop for Dummy {
-        fn drop(&mut self) {
-        }
+        fn drop(&mut self) {}
     }
 
     #[test]
@@ -313,8 +314,8 @@ mod tests {
 
     #[test]
     fn drop_is_not_run_from_other_thread() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
 
         struct MakeItTrueOnDrop(Arc<AtomicBool>);
 

@@ -4,12 +4,12 @@
 
 //! An immutable memory location that implements `Send` for types that do not implement it
 
+extern crate fragile;
+
 use std::cmp;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::mem;
 use std::ops;
-use std::thread;
 
 /// An immutable memory location that implements `Send` for types that do not implement it
 ///
@@ -25,16 +25,14 @@ use std::thread;
 /// Calling `drop` on a `SendCell` or otherwise freeing the value from a different thread than the
 /// one where it was created also results in a panic.
 pub struct SendCell<T> {
-    value: Option<T>,
-    thread_id: thread::ThreadId,
+    value: fragile::Fragile<T>,
 }
 
 impl<T> SendCell<T> {
     /// Creates a new `SendCell` containing `value`.
     pub fn new(value: T) -> Self {
         SendCell {
-            value: Some(value),
-            thread_id: thread::current().id(),
+            value: fragile::Fragile::new(value),
         }
     }
 
@@ -43,24 +41,16 @@ impl<T> SendCell<T> {
     /// # Panics
     ///
     /// Panics if called from a different thread than the one where the original value was created.
-    pub fn into_inner(mut self) -> T {
-        if thread::current().id() != self.thread_id {
-            panic!("trying to convert to inner value in invalid thread");
-        }
-
-        self.value.take().unwrap()
+    pub fn into_inner(self) -> T {
+        self.value.into_inner()
     }
 
     /// Consumes the `SendCell`, returning the wrapped value if successful.
     ///
     /// The wrapped value is returned if this is called from the same thread as the one where the
     /// original value was created, otherwise the `SendCell` is returned as `Err(self)`.
-    pub fn try_into_inner(mut self) -> Result<T, Self> {
-        if thread::current().id() == self.thread_id {
-            Ok(self.value.take().unwrap())
-        } else {
-            Err(self)
-        }
+    pub fn try_into_inner(self) -> Result<T, Self> {
+        self.value.try_into_inner().map_err(|v| SendCell { value: v })
     }
 
     /// Immutably borrows the wrapped value.
@@ -71,11 +61,7 @@ impl<T> SendCell<T> {
     ///
     /// Panics if called from a different thread than the one where the original value was created.
     pub fn get(&self) -> &T {
-        if thread::current().id() != self.thread_id {
-            panic!("trying to convert to inner value in invalid thread");
-        }
-
-        self.value.as_ref().unwrap()
+        self.value.get()
     }
 
     /// Tries to immutably borrow the wrapped value.
@@ -85,11 +71,7 @@ impl<T> SendCell<T> {
     ///
     /// Multiple immutable borrows can be taken out at the same time.
     pub fn try_get(&self) -> Option<&T> {
-        if thread::current().id() == self.thread_id {
-            Some(self.value.as_ref().unwrap())
-        } else {
-            None
-        }
+        self.value.try_get().ok()
     }
 
     /// Immutably borrows the wrapped value.
@@ -131,17 +113,6 @@ impl<T: Default> Default for SendCell<T> {
 impl<T: Clone> Clone for SendCell<T> {
     fn clone(&self) -> SendCell<T> {
         SendCell::new(self.get().clone())
-    }
-}
-
-impl<T> Drop for SendCell<T> {
-    fn drop(&mut self) {
-        if thread::current().id() != self.thread_id {
-            // Explicitly leak the value. Destructors of inner fields are still run after panic.
-            let value = self.value.take();
-            mem::forget(value);
-            panic!("trying to run destructor in invalid thread");
-        }
     }
 }
 
@@ -224,7 +195,7 @@ mod tests {
         //    the cell in case of panic (and don't have it borrowed anymore)
         // c) And then rethrow the panic
         let panic = {
-            let res = panic::catch_unwind(|| cell.get());
+            let res = panic::catch_unwind(panic::AssertUnwindSafe(|| cell.get()));
 
             res.err()
         };
@@ -276,7 +247,7 @@ mod tests {
         //    the cell in case of panic (and don't have it borrowed anymore)
         // c) And then rethrow the panic
         let panic = {
-            let res = panic::catch_unwind(|| cell.borrow());
+            let res = panic::catch_unwind(panic::AssertUnwindSafe(|| cell.borrow()));
 
             res.err()
         };
@@ -325,10 +296,16 @@ mod tests {
         mem::forget(res);
     }
 
+    struct Dummy(i32);
+    impl Drop for Dummy {
+        fn drop(&mut self) {
+        }
+    }
+
     #[test]
     #[should_panic]
     fn drop_panic() {
-        let t = thread::spawn(move || SendCell::new(1));
+        let t = thread::spawn(move || SendCell::new(Dummy(1)));
 
         let r = t.join();
         let _ = r.unwrap();
@@ -355,7 +332,7 @@ mod tests {
         let error = t.join().expect_err("thread should have panicked");
         assert_eq!(
             error.downcast_ref::<&str>(),
-            Some(&"trying to run destructor in invalid thread")
+            Some(&"destructor of fragile object ran on wrong thread")
         );
         assert_eq!(
             is_dropped.load(Ordering::SeqCst),
